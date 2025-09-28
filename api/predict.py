@@ -1,14 +1,10 @@
-from flask import Flask, request, jsonify
+import json
 import pickle
-import numpy as np
 import os
-import sys
+from http.server import BaseHTTPRequestHandler
 
-# Add the models directory to the path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'models'))
-
+# Load model once when the function is initialized
 def load_model():
-    """Load the pickled model"""
     try:
         model_path = os.path.join(os.path.dirname(__file__), '..', 'models', 'Meetings11.pkl')
         with open(model_path, 'rb') as f:
@@ -18,7 +14,6 @@ def load_model():
         print(f"Error loading model: {str(e)}")
         return None
 
-# Load model once when the function is initialized
 model = load_model()
 
 # Define categories
@@ -28,20 +23,13 @@ categories = [
 ]
 
 def predict_top_3(description):
-    """Predict top 3 categories with probabilities"""
     if model is None:
         raise Exception("Model not loaded")
     
-    # Vectorize the description
     X_new = model.named_steps['vect'].transform([description])
-    
-    # Predict probabilities
     probas = model.named_steps['clf'].predict_proba(X_new)[0]
-    
-    # Get top 3 indices
     top_3_indices = probas.argsort()[-3:][::-1]
     
-    # Get categories and probabilities
     predictions = []
     for idx in top_3_indices:
         predictions.append({
@@ -51,68 +39,57 @@ def predict_top_3(description):
     
     return predictions
 
-def handler(request):
-    """Main handler function for Vercel"""
-    try:
-        # Handle CORS preflight
-        if request.method == 'OPTIONS':
-            return jsonify({'status': 'ok'}), 200
-        
-        if request.method != 'POST':
-            return jsonify({'error': 'Method not allowed'}), 405
-        
-        # Get the JSON data from the request
-        data = request.get_json(force=True)
-        if not data or "description" not in data:
-            return jsonify({"error": "Missing 'description' in request data"}), 400
-
-        description = data.get("description")
-        if not isinstance(description, str) or description.strip() == "":
-            return jsonify({"error": "'description' must be a non-empty string"}), 400
-
-        prediction_type = data.get("type", "single")
-
-        if prediction_type == "top3":
-            predictions = predict_top_3(description)
-            response = jsonify({
-                "type": "top3",
-                "predictions": predictions
-            })
-        else:
-            # Single prediction
-            if model is None:
-                return jsonify({"error": "Model not loaded"}), 500
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body.decode('utf-8'))
             
-            prediction = model.predict([description])
-            predicted_category = prediction[0]
-            response = jsonify({
-                "type": "single",
-                "prediction": predicted_category
-            })
-        
-        # Add CORS headers
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        
-        return response
+            if not data or "description" not in data:
+                self.send_error(400, "Missing 'description' in request data")
+                return
 
-    except Exception as e:
-        error_response = jsonify({"error": str(e)})
-        error_response.headers.add('Access-Control-Allow-Origin', '*')
-        return error_response, 500
+            description = data.get("description")
+            if not isinstance(description, str) or description.strip() == "":
+                self.send_error(400, "'description' must be a non-empty string")
+                return
 
-# For Vercel runtime
-def main(request):
-    return handler(request)
+            prediction_type = data.get("type", "single")
 
-# For local testing
-if __name__ == "__main__":
-    from flask import Flask
-    app = Flask(__name__)
-    
-    @app.route("/api/predict", methods=["POST", "OPTIONS"])
-    def predict():
-        return handler(request)
-    
-    app.run(debug=True, port=5001)
+            if prediction_type == "top3":
+                predictions = predict_top_3(description)
+                response_data = {
+                    "type": "top3",
+                    "predictions": predictions
+                }
+            else:
+                if model is None:
+                    self.send_error(500, "Model not loaded")
+                    return
+                
+                prediction = model.predict([description])
+                predicted_category = prediction[0]
+                response_data = {
+                    "type": "single",
+                    "prediction": predicted_category
+                }
+            
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+            self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+            self.end_headers()
+            
+            self.wfile.write(json.dumps(response_data).encode('utf-8'))
+
+        except Exception as e:
+            self.send_error(500, str(e))
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.end_headers()

@@ -1,4 +1,5 @@
-from flask import jsonify
+import json
+from http.server import BaseHTTPRequestHandler
 
 # Define categories
 categories = [
@@ -6,41 +7,26 @@ categories = [
     'Operations', 'Logistics', 'Miscellaneous', 'Other'
 ]
 
-def handler(request):
-    """Main handler function for Vercel"""
-    try:
-        # Handle CORS preflight
-        if request.method == 'OPTIONS':
-            return jsonify({'status': 'ok'}), 200
-        
-        if request.method != 'GET':
-            return jsonify({'error': 'Method not allowed'}), 405
-        
-        response = jsonify({"categories": categories})
-        
-        # Add CORS headers
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
-        
-        return response
+class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        try:
+            response_data = {"categories": categories}
+            
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+            self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            self.end_headers()
+            
+            self.wfile.write(json.dumps(response_data).encode('utf-8'))
 
-    except Exception as e:
-        error_response = jsonify({"error": str(e)})
-        error_response.headers.add('Access-Control-Allow-Origin', '*')
-        return error_response, 500
+        except Exception as e:
+            self.send_error(500, str(e))
 
-# For Vercel runtime
-def main(request):
-    return handler(request)
-
-# For local testing
-if __name__ == "__main__":
-    from flask import Flask, request
-    app = Flask(__name__)
-    
-    @app.route("/api/categories", methods=["GET", "OPTIONS"])
-    def get_categories():
-        return handler(request)
-    
-    app.run(debug=True, port=5002)
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        self.end_headers()
