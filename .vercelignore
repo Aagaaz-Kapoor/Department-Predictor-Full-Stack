@@ -1,0 +1,9 @@
+backend/
+frontend/
+node_modules/
+.git/
+*.ipynb
+*.xlsx
+*.csv
+TODO.md
+how_to_run.txt

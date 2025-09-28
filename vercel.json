@@ -1,0 +1,52 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "build"
+      }
+    }
+  ],
+  "functions": {
+    "api/predict.py": {
+      "runtime": "python3.9",
+      "maxDuration": 30
+    },
+    "api/categories.py": {
+      "runtime": "python3.9",
+      "maxDuration": 10
+    },
+    "api/health.py": {
+      "runtime": "python3.9",
+      "maxDuration": 10
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/predict",
+      "dest": "/api/predict.py"
+    },
+    {
+      "src": "/api/categories",
+      "dest": "/api/categories.py"
+    },
+    {
+      "src": "/api/health",
+      "dest": "/api/health.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/build/$1"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "build": {
+    "env": {
+      "NODE_ENV": "production"
+    }
+  }
+}
